@@ -1,6 +1,16 @@
+function Test-Administrator {  
+  $user = [Security.Principal.WindowsIdentity]::GetCurrent();
+    (New-Object Security.Principal.WindowsPrincipal $user).IsInRole([Security.Principal.WindowsBuiltinRole]::Administrator)  
+}
+
+if (-not (Test-Administrator)) {
+  Start-Process powershell -Verb RunAs -ArgumentList "-NoProfile -ExecutionPolicy Bypass -File `"$PSCommandPath`""
+  Exit
+}
+
 function Show-Menu {
   param (
-      [string]$MenuTitle = 'Path Manager'
+    [string]$MenuTitle = 'Path Manager'
   )
 
   Clear-Host
@@ -25,7 +35,7 @@ if (-not (Test-Path "$PSScriptRoot\{{drive}}")) {
 
 function Get-Paths {
   $driveLetter = $PSScriptRoot.Substring(0, 1)
-  Get-ChildItem -Path "$PSScriptRoot\{{drive}}" -Recurse | Where-Object { $_.PSIsContainer -eq $false } | ForEach-Object { $_.FullName.Substring($PSScriptRoot.Length + 1).Replace("{{drive}}\", $driveLetter+":\") }
+  Get-ChildItem -Path "$PSScriptRoot\{{drive}}" -Recurse | Where-Object { $_.PSIsContainer -eq $false } | ForEach-Object { $_.FullName.Substring($PSScriptRoot.Length + 1).Replace("{{drive}}\", $driveLetter + ":\") }
 }
 
 function List-Paths {
@@ -46,60 +56,60 @@ function Create-Directories {
 
 function Add-Path {
   
-    $fileDialog = New-Object System.Windows.Forms.OpenFileDialog
-    $fileDialog.InitialDirectory = [Environment]::GetFolderPath('MyDocuments')
-    $fileDialog.Filter = "All files (*.*)|*.*"
-    $result = $fileDialog.ShowDialog()
+  $fileDialog = New-Object System.Windows.Forms.OpenFileDialog
+  $fileDialog.InitialDirectory = [Environment]::GetFolderPath('MyDocuments')
+  $fileDialog.Filter = "All files (*.*)|*.*"
+  $result = $fileDialog.ShowDialog()
 
   
     
-    if ($result -eq [System.Windows.Forms.DialogResult]::OK) {
-        $origin = $fileDialog.FileName
+  if ($result -eq [System.Windows.Forms.DialogResult]::OK) {
+    $origin = $fileDialog.FileName
 
-        # Exit if the selected path already includes "{{drive}}"
-        if ($origin -match "{{drive}}") {
-          Write-Host "Path already added: $($origin.Substring($PSScriptRoot.Length + 1))"
-          return
-        }
+    # Exit if the selected path already includes "{{drive}}"
+    if ($origin -match "{{drive}}") {
+      Write-Host "Path already added: $($origin.Substring($PSScriptRoot.Length + 1))"
+      return
+    }
 
-        # Create the correct absolute paths and move the seleted file
-        # $PSScriptRoot/{{drive}}/path/to/file. 
-        $target = "$PSScriptRoot" + "\{{drive}}\" + $origin.Substring(3)
+    # Create the correct absolute paths and move the seleted file
+    # $PSScriptRoot/{{drive}}/path/to/file. 
+    $target = "$PSScriptRoot" + "\{{drive}}\" + $origin.Substring(3)
 
-        # Create the directory structure if it doesn't exist
-        Create-Directories -path $target
+    # Create the directory structure if it doesn't exist
+    Create-Directories -path $target
 
-        # Move the file to the target location
-        Move-Item -Path $origin -Destination $target
+    # Move the file to the target location
+    Move-Item -Path $origin -Destination $target
 
-        # Optionally, create a symbolic link (if needed), targeting the moved file
-        New-Item -ItemType SymbolicLink -Path $origin -Value $target
+    # Optionally, create a symbolic link (if needed), targeting the moved file
+    New-Item -ItemType SymbolicLink -Path $origin -Value $target
 
-        Write-Host "Path added: $origin"
-      }
+    Write-Host "Path added: $origin"
+  }
 }
 
 function Remove-EmptyDirectories {
   param (
-      [string]$Path
+    [string]$Path
   )
 
   # Get all child directories
   $childDirs = Get-ChildItem -Path $Path -Directory -Recurse | Sort-Object -Property FullName -Descending
 
   foreach ($dir in $childDirs) {
-      # Check if the directory is empty (no files or directories)
-      if (-not (Get-ChildItem -Path $dir.FullName)) {
-          # Remove the empty directory
-          Remove-Item -Path $dir.FullName -Force
-          Write-Host "Removed empty directory: $($dir.FullName)"
-      }
+    # Check if the directory is empty (no files or directories)
+    if (-not (Get-ChildItem -Path $dir.FullName)) {
+      # Remove the empty directory
+      Remove-Item -Path $dir.FullName -Force
+      Write-Host "Removed empty directory: $($dir.FullName)"
+    }
   }
 
 }
 
 function Remove-Path {
-  Get-Paths | % { $i=0} { Write-Host "$i`: $_"; $i++ }
+  Get-Paths | % { $i = 0 } { Write-Host "$i`: $_"; $i++ }
   $input = Read-Host "Select a path to remove"
   # return if not a number
   if ($input -match '\D' -or $input.Length -eq 0) {
@@ -122,7 +132,8 @@ function Remove-Path {
     # Remove the empty directories
     Remove-EmptyDirectories -Path "$PSScriptRoot\{{drive}}"
 
-  } else {
+  }
+  else {
     Write-Host "Path not found: $input"
   }
 }
@@ -141,25 +152,25 @@ function Restore-Paths {
   }
 
   foreach ($path in $paths) {
-      echo "Restoring path: $path"
-      # Determine the directory where the symbolic link should be created
-      $directoryPath = [System.IO.Path]::GetDirectoryName($path)
+    echo "Restoring path: $path"
+    # Determine the directory where the symbolic link should be created
+    $directoryPath = [System.IO.Path]::GetDirectoryName($path)
 
-      $dotConfigPath = "$PSScriptRoot\{{drive}}\" + $path.Substring(3)
+    $dotConfigPath = "$PSScriptRoot\{{drive}}\" + $path.Substring(3)
 
-      # Ensure the directory exists
-      if (-not (Test-Path $directoryPath)) {
-        New-Item -ItemType Directory -Force -Path $directoryPath
-      }
+    # Ensure the directory exists
+    if (-not (Test-Path $directoryPath)) {
+      New-Item -ItemType Directory -Force -Path $directoryPath
+    }
 
-      # Check if a link already exists at the target location, remove it if it does
-      if (Test-Path $path) {
-        Create-Directories -path "$PSScriptRoot\config\$timestamp\"
-        Move-Item -Path $path -Destination "$PSScriptRoot\config\$timestamp"
-      }
+    # Check if a link already exists at the target location, remove it if it does
+    if (Test-Path $path) {
+      Create-Directories -path "$PSScriptRoot\config\$timestamp\"
+      Move-Item -Path $path -Destination "$PSScriptRoot\config\$timestamp"
+    }
 
-      # Create a symbolic link from the original location to the file in the dotfiles directory
-      New-Item -ItemType SymbolicLink -Path $path -Value $dotConfigPath
+    # Create a symbolic link from the original location to the file in the dotfiles directory
+    New-Item -ItemType SymbolicLink -Path $path -Value $dotConfigPath
   }
   if (Test-Path "$PSScriptRoot\config\$timestamp") {
     Write-Host "Some config files already existed in the target location. They have been moved to $PSScriptRoot\config\$timestamp"
@@ -170,24 +181,24 @@ do {
   Show-Menu
   $input = Read-Host "Please select an option"
   switch ($input) {
-      '1' {
-          List-Paths
-      }
-      '2' {
-          Add-Path
-      }
-      '3' {
-          Remove-Path
-      }
-      '4' {
-          Restore-Paths
-      }
-      'Q' {
-          break
-      }
-      default {
-          Write-Host "Invalid option, please try again."
-      }
+    '1' {
+      List-Paths
+    }
+    '2' {
+      Add-Path
+    }
+    '3' {
+      Remove-Path
+    }
+    '4' {
+      Restore-Paths
+    }
+    'Q' {
+      break
+    }
+    default {
+      Write-Host "Invalid option, please try again."
+    }
   }
   pause
 } while ($input -ne 'Q')
