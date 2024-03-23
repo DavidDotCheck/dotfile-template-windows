@@ -1,3 +1,13 @@
+function Test-Administrator {  
+  $user = [Security.Principal.WindowsIdentity]::GetCurrent();
+    (New-Object Security.Principal.WindowsPrincipal $user).IsInRole([Security.Principal.WindowsBuiltinRole]::Administrator)  
+}
+
+if (-not (Test-Administrator)) {
+  Start-Process powershell -Verb RunAs -ArgumentList "-NoProfile -ExecutionPolicy Bypass -File `"$PSCommandPath`""
+  Exit
+}
+
 function Show-Menu {
   param (
     [string]$MenuTitle = 'Path Manager'
