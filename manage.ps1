@@ -16,9 +16,9 @@ function Show-Menu {
   Clear-Host
   Write-Host "================ $MenuTitle ================"
   Write-Host "1: List paths"
-  Write-Host "2: Add a path"
-  Write-Host "3: Remove a path"
-  Write-Host "4: Restore paths"
+  Write-Host "2: Add files"
+  Write-Host "3: Remove files"
+  Write-Host "4: Restore all files"
   Write-Host "Q: Exit"
 }
 
@@ -54,38 +54,46 @@ function Create-Directories {
   }
 }
 
-function Add-Path {
-  
+function FileSystemPicker {
   $fileDialog = New-Object System.Windows.Forms.OpenFileDialog
   $fileDialog.InitialDirectory = [Environment]::GetFolderPath('MyDocuments')
   $fileDialog.Filter = "All files (*.*)|*.*"
+  $fileDialog.Multiselect = $true
   $result = $fileDialog.ShowDialog()
+  return $fileDialog.FileNames
+}
 
+function Add-File {
+  param (
+    [string]$origin
+  )
   
-    
-  if ($result -eq [System.Windows.Forms.DialogResult]::OK) {
-    $origin = $fileDialog.FileName
+  # Exit if the selected path already includes "{{drive}}"
+  if ($origin -match "{{drive}}") {
+    Write-Host "Path already added: $($origin.Substring($PSScriptRoot.Length + 1))"
+    return
+  }
 
-    # Exit if the selected path already includes "{{drive}}"
-    if ($origin -match "{{drive}}") {
-      Write-Host "Path already added: $($origin.Substring($PSScriptRoot.Length + 1))"
-      return
-    }
+  # Create the correct absolute paths and move the seleted file
+  # $PSScriptRoot/{{drive}}/path/to/file. 
+  $target = "$PSScriptRoot" + "\{{drive}}\" + $origin.Substring(3)
 
-    # Create the correct absolute paths and move the seleted file
-    # $PSScriptRoot/{{drive}}/path/to/file. 
-    $target = "$PSScriptRoot" + "\{{drive}}\" + $origin.Substring(3)
+  # Create the directory structure if it doesn't exist
+  Create-Directories -path $target
 
-    # Create the directory structure if it doesn't exist
-    Create-Directories -path $target
+  # Move the file to the target location
+  Move-Item -Path $origin -Destination $target
 
-    # Move the file to the target location
-    Move-Item -Path $origin -Destination $target
+  # Optionally, create a symbolic link (if needed), targeting the moved file
+  New-Item -ItemType SymbolicLink -Path $origin -Value $target
 
-    # Optionally, create a symbolic link (if needed), targeting the moved file
-    New-Item -ItemType SymbolicLink -Path $origin -Value $target
+  Write-Host "Path added: $origin"
+}
 
-    Write-Host "Path added: $origin"
+function Add-Files {
+  $files = FileSystemPicker
+  foreach ($file in $files) {
+    Add-File -origin $file
   }
 }
 
@@ -109,33 +117,40 @@ function Remove-EmptyDirectories {
 }
 
 function Remove-Path {
+  param (
+    [string]$path
+  )
+  
+  $linkTarget = (Get-Item -Path "$path").Target
+
+  Write-Host "Removing path: $path from $linkTarget"
+
+  Remove-Item -Path $path
+  Move-Item -Path $linkTarget -Destination $path
+
+  # Remove the empty directories
+  Remove-EmptyDirectories -Path "$PSScriptRoot\{{drive}}"
+
+  
+}
+
+function Remove-Paths {
   Get-Paths | % { $i = 0 } { Write-Host "$i`: $_"; $i++ }
-  $input = Read-Host "Select a path to remove"
-  # return if not a number
-  if ($input -match '\D' -or $input.Length -eq 0) {
-    Write-Host "Invalid input: $input"
+  $in = Read-Host "Enter the numbers of the paths you want to remove, separated by commas"
+  $paths = $in.Split(',') | ForEach-Object { (Get-Paths)[$_ -as [int]] } | Where-Object { $_ -ne $null } | Sort-Object -Descending -Property Length
+
+  $confirm = Read-Host "Are you sure you want to move the files back to their original location? (Y/n)"
+  if ($confirm.Length -gt 0 -and $confirm -ne 'Y') {
+    Write-Host "Action cancelled"
     return
   }
-  $path = Get-Paths | Select-Object -Index $input
-  if ($path) {
-    $confirm = Read-Host "Are you sure you want to move the file back to its original location? (Y/n)"
-    if ($confirm.Length -gt 0 -and $confirm -ne 'Y') {
-      Write-Host "Action cancelled"
-      return
-    }
-    $linkTarget = (Get-Item -Path "$path").Target
-    Remove-Item -Path $path
-    Move-Item -Path $linkTarget -Destination $path
-    Write-Host "Done"
 
-    Write-Host "Pruining empty directories:"
-    # Remove the empty directories
-    Remove-EmptyDirectories -Path "$PSScriptRoot\{{drive}}"
-
+  Write-Host (Get-Paths)
+  foreach ($path in $paths) {
+    Write-Host "Removing path: $path"
+    Remove-Path -path $path
   }
-  else {
-    Write-Host "Path not found: $input"
-  }
+  
 }
 
 
@@ -185,10 +200,10 @@ do {
       List-Paths
     }
     '2' {
-      Add-Path
+      Add-Files
     }
     '3' {
-      Remove-Path
+      Remove-Paths
     }
     '4' {
       Restore-Paths
